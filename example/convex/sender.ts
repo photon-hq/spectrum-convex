@@ -27,7 +27,6 @@ export const deliver = internalAction({
     kind: v.string(),
     content: v.optional(v.any()),
     targetMessageId: v.optional(v.string()),
-    targetContent: v.optional(v.any()),
     reaction: v.optional(v.string()),
   },
   returns: v.null(),
@@ -56,12 +55,15 @@ export const deliver = internalAction({
  */
 export const saveAttachment = internalAction({
   args: {
-    attachmentId: v.string(),
+    spaceId: v.string(),
+    messageId: v.string(),
     phone: v.optional(v.string()),
   },
   returns: v.union(v.null(), v.id("_storage")),
   handler: async (ctx, args) => {
-    const found = await fetchAttachment(args.attachmentId, {
+    const found = await fetchAttachment({
+      spaceId: args.spaceId,
+      messageId: args.messageId,
       ...(args.phone === undefined ? {} : { phone: args.phone }),
     });
     if (!found) {

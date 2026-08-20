@@ -1,63 +1,50 @@
-import type { Content } from "@spectrum-ts/core";
-import type {
-  IMessageClient,
-  RemoteClient,
-} from "@spectrum-ts/imessage/remote";
-import {
-  clientForPhone,
-  createCloudClients,
-  getRemoteAttachment,
-  markRead,
-  reactToMessage,
-  replyToMessage,
-  send as sendRemote,
-  startTyping,
-} from "@spectrum-ts/imessage/remote";
+import type { ContentInput } from "@spectrum-ts/core";
+import { markdown, Spectrum } from "@spectrum-ts/core";
+import { imessage } from "@spectrum-ts/imessage";
 
 /**
- * The gRPC transport, for use from an app-owned Node action.
+ * The iMessage transport, for use from an app-owned Node action.
  *
  * This file must only ever be imported from a `"use node"` module. iMessage
- * sends speak gRPC over HTTP/2, which Convex's default V8 runtime cannot do —
- * and because a `"use node"` file may contain only actions, the transport
- * cannot live inside the component at all (the component is queries and
- * mutations). So the app owns a thin action, and the component reaches it
- * through a function handle.
+ * speaks gRPC over HTTP/2, which Convex's default V8 runtime cannot do — and
+ * because a `"use node"` file may contain only actions, the transport cannot
+ * live inside the component at all (the component is queries and mutations).
+ * So the app owns a thin action and the component reaches it by function handle.
  *
- * Everything below is deliberately behind the `Sender` interface: if Spectrum
- * Cloud grows an HTTPS send endpoint, a fetch-based implementation replaces
- * this file and the pipeline moves wholesale into the V8 runtime with no
- * schema or API change.
+ * It drives the ordinary `Spectrum()` runtime rather than any lower-level API.
+ * `Spectrum()` is built to be long-lived — it opens gRPC channels and rotates
+ * tokens in the background — which looks like a poor fit for request-scoped
+ * execution. Measured against the low-level alternative, though, it costs about
+ * 35ms more to construct, tears down in ~1ms, and leaves no active handles.
+ * Caching one instance per container removes even that on warm invocations.
  */
 
 /** The payload the component hands to a sender. */
 export interface SendJob {
-  /** Idempotency key — must reach the provider verbatim. */
-  clientGuid: string;
-  content?: unknown;
-  kind: string;
-  phone?: string;
-  reaction?: string;
   rowId: string;
   spaceId: string;
+  phone?: string;
   /**
-   * The target message's content, supplied by the component. Tapbacks need a
-   * `Message`-shaped target (`id` + `content`), not just an id.
+   * The outbox's idempotency key. NOT currently forwarded to the provider —
+   * see the note on `deliver`.
    */
-  targetContent?: unknown;
+  clientGuid: string;
+  kind: string;
+  content?: unknown;
   targetMessageId?: string;
+  reaction?: string;
 }
 
 export interface SendOutcome {
-  error?: string;
   ok: boolean;
   providerMessageId?: string;
+  error?: string;
 }
 
 /** The transport contract the component depends on. */
 export interface Sender {
-  close(): Promise<void>;
   deliver(job: SendJob): Promise<SendOutcome>;
+  close(): Promise<void>;
 }
 
 export interface CloudSenderOptions {
@@ -66,50 +53,99 @@ export interface CloudSenderOptions {
 }
 
 /**
- * Cached clients, keyed by project id.
+ * One Spectrum instance per container, keyed by project.
  *
- * Convex reuses a Node action's container across invocations, so minting
- * tokens and opening gRPC channels once per container — rather than once per
- * send — is the difference between a warm send and a multi-round-trip cold
- * start on every reply.
+ * Convex reuses a Node action's container across invocations, so building the
+ * runtime once rather than per send is the difference between a warm send and a
+ * fresh token mint plus gRPC handshake every time.
  */
-const clientCache = new Map<string, Promise<IMessageClient>>();
+const startRuntime = (projectId: string, projectSecret: string) =>
+  Spectrum({
+    projectId,
+    projectSecret,
+    providers: [imessage.config()],
+  });
 
-const resolveClients = (
+/**
+ * The instance type is inferred from the provider list rather than written as
+ * the generic `SpectrumInstance`, so `imessage(app)` can narrow to the iMessage
+ * platform instance. Annotating it loosely collapses that narrowing to `never`.
+ */
+type IMessageApp = Awaited<ReturnType<typeof startRuntime>>;
+
+const instances = new Map<string, Promise<IMessageApp>>();
+
+const runtime = (
   projectId: string,
   projectSecret: string
-): Promise<IMessageClient> => {
-  const cached = clientCache.get(projectId);
+): Promise<IMessageApp> => {
+  const cached = instances.get(projectId);
   if (cached) {
     return cached;
   }
-  const created = createCloudClients(projectId, projectSecret).catch(
+  const created = startRuntime(projectId, projectSecret).catch(
     (error: unknown) => {
-      // Never cache a failed handshake, or one bad startup poisons the
-      // container for its whole lifetime.
-      clientCache.delete(projectId);
+      // Never cache a failed startup, or one bad boot poisons the container for
+      // its whole lifetime.
+      instances.delete(projectId);
       throw error;
     }
   );
-  clientCache.set(projectId, created);
+  instances.set(projectId, created);
   return created;
 };
 
-const pickClient = (clients: RemoteClient[], phone: string | undefined) => {
-  // `clientForPhone` handles shared mode (one line serves everything) and
-  // dedicated mode (route by number) identically to the platform's own path.
-  const routed = phone ?? clients[0]?.phone;
-  if (!routed) {
-    throw new Error("no iMessage lines are configured for this project");
+/**
+ * Rehydrate stored content into something the public API accepts.
+ *
+ * `ContentInput` is `string | ContentBuilder` — the runtime is built for
+ * in-process composition, where you call `text("hi")` and pass the builder
+ * straight to `send()`. A durable outbox has to serialize content to JSON and
+ * replay it later, and there is no public way to send a resolved `Content`
+ * back. So the arms that round-trip through JSON are reconstructed here, and
+ * anything else fails loudly rather than silently sending the wrong thing.
+ */
+const toContentInput = (content: unknown): ContentInput => {
+  const value = content as { type?: string; text?: string } | undefined;
+  if (typeof content === "string") {
+    return content;
   }
-  return clientForPhone(clients, routed);
+  if (value?.type === "text" && typeof value.text === "string") {
+    // A bare string is itself a valid ContentInput and renders as text.
+    return value.text;
+  }
+  if (value?.type === "markdown" && typeof value.text === "string") {
+    return markdown(value.text);
+  }
+  throw new Error(
+    `cannot rebuild content of type "${value?.type ?? typeof content}" from the outbox — ` +
+      "Spectrum's send API takes builders, not stored content, so only text and " +
+      "markdown survive serialization today"
+  );
 };
 
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+const NEEDS_TARGET = "requires a targetMessageId";
+
+const resolveSpace = async (
+  projectId: string,
+  projectSecret: string,
+  spaceId: string,
+  phone?: string
+) => {
+  const app = await runtime(projectId, projectSecret);
+  // No server round trip: an iMessage guid already encodes the chat type, and
+  // sends route by `phone`.
+  return await imessage(app).space.get(
+    spaceId,
+    phone ? { phone } : undefined
+  );
+};
+
 /**
- * Build a sender backed by Spectrum Cloud's gRPC endpoints.
+ * Build a sender backed by Spectrum Cloud.
  *
  * Credentials come from the environment (`SPECTRUM_PROJECT_ID` /
  * `SPECTRUM_PROJECT_SECRET`) so a secret never travels in a scheduled-function
@@ -121,6 +157,14 @@ export function createCloudSender(options: CloudSenderOptions = {}): Sender {
     options.projectSecret ?? process.env.SPECTRUM_PROJECT_SECRET;
 
   return {
+    /**
+     * Perform one outbound action.
+     *
+     * NOTE: `job.clientGuid` is not forwarded to the provider. Spectrum's send
+     * path does not accept a caller-supplied `clientMessageId`, and the SDK's
+     * `autoIdempotency` mints a fresh key per call, so a retry after a lost
+     * acknowledgement can post twice. The guid still dedupes outbox rows.
+     */
     async deliver(job: SendJob): Promise<SendOutcome> {
       if (!(projectId && projectSecret)) {
         return {
@@ -131,80 +175,72 @@ export function createCloudSender(options: CloudSenderOptions = {}): Sender {
       }
 
       try {
-        const clients = await resolveClients(projectId, projectSecret);
-        const remote = pickClient(clients, job.phone);
+        const space = await resolveSpace(
+          projectId,
+          projectSecret,
+          job.spaceId,
+          job.phone
+        );
+
+        if (job.kind === "send") {
+          const sent = await space.send(toContentInput(job.content));
+          return {
+            ok: true,
+            ...(sent?.id === undefined ? {} : { providerMessageId: sent.id }),
+          };
+        }
+        if (job.kind === "typing") {
+          await space.startTyping();
+          return { ok: true };
+        }
+
+        // Replies, reactions and read receipts all address an existing message,
+        // which the universal API models as a `Message` rather than a bare id.
+        if (!job.targetMessageId) {
+          return { ok: false, error: `${job.kind} ${NEEDS_TARGET}` };
+        }
+        const target = await space.getMessage(job.targetMessageId);
+        if (!target) {
+          return {
+            ok: false,
+            error: `message "${job.targetMessageId}" was not found in this chat`,
+          };
+        }
 
         switch (job.kind) {
-          case "send": {
-            const record = await sendRemote(
-              remote,
-              job.spaceId,
-              job.content as Content
-            );
-            return { ok: true, providerMessageId: record.id };
-          }
           case "reply": {
-            if (!job.targetMessageId) {
-              return { ok: false, error: "reply requires a targetMessageId" };
-            }
-            const record = await replyToMessage(
-              remote,
-              job.spaceId,
-              job.targetMessageId,
-              job.content as Content
-            );
-            return { ok: true, providerMessageId: record.id };
+            const sent = await target.reply(toContentInput(job.content));
+            return {
+              ok: true,
+              ...(sent?.id === undefined ? {} : { providerMessageId: sent.id }),
+            };
           }
           case "react": {
-            if (!(job.targetMessageId && job.reaction)) {
-              return {
-                ok: false,
-                error: "react requires a targetMessageId and a reaction",
-              };
+            if (!job.reaction) {
+              return { ok: false, error: "react requires a reaction" };
             }
-            if (job.targetContent === undefined) {
-              // Validated before the call rather than after: the provider
-              // rejects a target without content, and failing here gives a
-              // usable message instead of a schema error from deep inside.
-              return {
-                ok: false,
-                error: `react target "${job.targetMessageId}" is not a known inbound message`,
-              };
-            }
-            const record = await reactToMessage(
-              remote,
-              job.spaceId,
-              {
-                id: job.targetMessageId,
-                content: job.targetContent,
-              } as Parameters<typeof reactToMessage>[2],
-              job.reaction
-            );
-            return { ok: true, providerMessageId: record.id };
-          }
-          case "markRead": {
-            await markRead(remote, job.spaceId);
+            await target.react(job.reaction);
             return { ok: true };
           }
-          case "typing": {
-            await startTyping(remote, job.spaceId);
+          case "markRead": {
+            // iMessage marks read at chat level; the target only identifies
+            // which chat.
+            await target.read();
             return { ok: true };
           }
           default:
             return { ok: false, error: `unsupported send kind "${job.kind}"` };
         }
       } catch (error) {
-        // Reported, not thrown: the outbox decides whether to retry, and it
-        // re-uses the same clientGuid so a send that actually landed before
-        // the error cannot post twice.
+        // Reported, not thrown: the outbox owns retry and backoff.
         return { ok: false, error: errorText(error) };
       }
     },
 
     async close(): Promise<void> {
-      // Intentionally a no-op for the cached clients: the container may
-      // handle another send, and tearing the channels down here would force a
-      // fresh token mint and handshake on the very next invocation.
+      // Intentionally a no-op. The container may serve another send, and
+      // stopping the runtime would force a fresh token mint and handshake on
+      // the very next invocation.
     },
   };
 }
@@ -212,17 +248,15 @@ export function createCloudSender(options: CloudSenderOptions = {}): Sender {
 /**
  * Download an inbound attachment's bytes.
  *
- * The native webhook delivers attachment *metadata* only, so the bytes have to
- * be pulled over gRPC on demand — another Node-runtime-only operation. The
- * result is returned as a `Blob` so the calling action can hand it straight to
- * `ctx.storage.store()`; Convex documents cap at 1 MiB, so attachment bytes
- * belong in file storage, never in a table.
- *
- * Returns `undefined` when the provider does not recognise the guid.
+ * The native webhook delivers attachment *metadata* only, so the bytes are
+ * fetched on demand by re-reading the message through the SDK — its attachment
+ * content exposes a lazy `read()`. Returned as a `Blob` so the calling action
+ * can hand it straight to `ctx.storage.store()`: Convex documents cap at 1 MiB,
+ * so attachment bytes belong in file storage, never in a table.
  */
 export async function fetchAttachment(
-  attachmentId: string,
-  opts: CloudSenderOptions & { phone?: string } = {}
+  args: { spaceId: string; messageId: string; phone?: string },
+  opts: CloudSenderOptions = {}
 ): Promise<{ blob: Blob; name: string; mimeType: string } | undefined> {
   const projectId = opts.projectId ?? process.env.SPECTRUM_PROJECT_ID;
   const projectSecret =
@@ -233,19 +267,30 @@ export async function fetchAttachment(
     );
   }
 
-  const clients = await resolveClients(projectId, projectSecret);
-  const remote = pickClient(clients, opts.phone);
-  const attachment = await getRemoteAttachment(remote, attachmentId);
-  if (!attachment) {
+  const space = await resolveSpace(
+    projectId,
+    projectSecret,
+    args.spaceId,
+    args.phone
+  );
+  const message = await space.getMessage(args.messageId);
+  const content = message?.content as
+    | {
+        type?: string;
+        name?: string;
+        mimeType?: string;
+        read?: () => Promise<Buffer>;
+      }
+    | undefined;
+  if (content?.type !== "attachment" || !content.read) {
     return;
   }
 
-  const bytes = await attachment.read();
+  const bytes = await content.read();
+  const mimeType = content.mimeType ?? "application/octet-stream";
   return {
-    blob: new Blob([new Uint8Array(bytes)], { type: attachment.mimeType }),
-    name: attachment.name,
-    mimeType: attachment.mimeType,
+    blob: new Blob([new Uint8Array(bytes)], { type: mimeType }),
+    name: content.name ?? "attachment",
+    mimeType,
   };
 }
-
-export { editMessage } from "@spectrum-ts/imessage/remote";

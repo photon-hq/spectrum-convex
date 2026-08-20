@@ -1,6 +1,8 @@
 import {
   createFunctionHandle,
   type FunctionReference,
+  type FunctionReturnType,
+  type OptionalRestArgs,
   type GenericActionCtx,
   type GenericDataModel,
   type GenericMutationCtx,
@@ -65,13 +67,31 @@ export const pickChain = (ref: {
   chainId: ref.chainId,
 });
 
-type AnyCtx =
-  | GenericQueryCtx<GenericDataModel>
-  | GenericMutationCtx<GenericDataModel>
-  | GenericActionCtx<GenericDataModel>;
-type RunMutationCtx =
-  | GenericMutationCtx<GenericDataModel>
-  | GenericActionCtx<GenericDataModel>;
+/**
+ * Minimal structural ctx types — only the capability each method actually uses.
+ *
+ * Deliberately not `GenericQueryCtx<GenericDataModel> | …`. An app's ctx is
+ * parameterised by *its* data model (`AnyDataModel` in a generated app), which
+ * is not assignable to `GenericDataModel` because the index signatures differ.
+ * Nor can these borrow the ctx types' own `runQuery`/`runMutation`: an action's
+ * take no options while a mutation's accept `transactionLimits`. Declaring the
+ * narrower shape both satisfy — in method syntax, so parameters stay bivariant
+ * — accepts a ctx from a query, mutation or action alike.
+ */
+type AnyCtx = {
+  runQuery<Query extends FunctionReference<"query", "public" | "internal">>(
+    query: Query,
+    ...args: OptionalRestArgs<Query>
+  ): Promise<FunctionReturnType<Query>>;
+};
+type RunMutationCtx = {
+  runMutation<
+    Mutation extends FunctionReference<"mutation", "public" | "internal">,
+  >(
+    mutation: Mutation,
+    ...args: OptionalRestArgs<Mutation>
+  ): Promise<FunctionReturnType<Mutation>>;
+};
 
 /**
  * How inbound messages become turns.

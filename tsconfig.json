@@ -12,7 +12,21 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["node", "vite/client"]
+    "types": ["node", "vite/client"],
+    // Points at a sibling checkout of the SDK so its BUILT declarations are
+    // used rather than its source — otherwise TypeScript checks the SDK's own
+    // code under this project's `lib` settings and reports errors that don't
+    // apply to the published package. Inert without that checkout: TypeScript
+    // falls back to normal node resolution when a mapping doesn't resolve.
+    "paths": {
+      "@spectrum-ts/core": ["../spectrum-ts/packages/core/dist/index.d.ts"],
+      "@spectrum-ts/core/webhook": [
+        "../spectrum-ts/packages/core/dist/webhook.d.ts"
+      ],
+      "@spectrum-ts/imessage": [
+        "../spectrum-ts/packages/imessage/dist/index.d.ts"
+      ]
+    }
   },
   "include": ["src", "test"],
   "exclude": ["node_modules", "dist", "example"]

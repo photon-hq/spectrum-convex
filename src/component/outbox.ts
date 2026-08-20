@@ -34,7 +34,6 @@ type SenderHandle = FunctionHandle<
     kind: string;
     content?: unknown;
     targetMessageId?: string;
-    targetContent?: unknown;
     reaction?: string;
   },
   unknown
@@ -121,6 +120,19 @@ export const enqueue = mutation({
       return { queued: false, clientGuid, reason: "duplicate" };
     }
 
+    // Read receipts and reactions address an existing message. iMessage marks
+    // read at chat level, but the universal API still identifies the chat
+    // through one of its messages, so fall back to the newest inbound message
+    // of this turn when the caller did not name one.
+    let targetMessageId = args.targetMessageId;
+    if (!targetMessageId && args.kind === "markRead" && args.chainId) {
+      const newest = await ctx.db
+        .query("inbound")
+        .withIndex("by_chain", (q) => q.eq("chainId", args.chainId))
+        .collect();
+      targetMessageId = newest.at(-1)?.messageId;
+    }
+
     const rowId = await ctx.db.insert("outbox", {
       spaceId: args.spaceId,
       ...(args.chainId === undefined ? {} : { chainId: args.chainId }),
@@ -128,9 +140,7 @@ export const enqueue = mutation({
       clientGuid,
       kind: args.kind,
       ...(args.content === undefined ? {} : { content: args.content }),
-      ...(args.targetMessageId === undefined
-        ? {}
-        : { targetMessageId: args.targetMessageId }),
+      ...(targetMessageId === undefined ? {} : { targetMessageId }),
       ...(args.reaction === undefined ? {} : { reaction: args.reaction }),
       status: "pending" as const,
       attempts: 0,
@@ -200,18 +210,6 @@ export const deliver = internalMutation({
       .withIndex("by_space", (q) => q.eq("spaceId", row.spaceId))
       .unique();
 
-    // A tapback's target must be a `Message`-shaped value (`id` + `content`),
-    // not just an id — the provider validates it before sending. We already
-    // stored the inbound content, so pass it through rather than making the
-    // sender invent one.
-    const target = row.targetMessageId
-      ? await ctx.db
-          .query("inbound")
-          .withIndex("by_message", (q) =>
-            q.eq("messageId", row.targetMessageId as string)
-          )
-          .unique()
-      : null;
 
     await ctx.scheduler.runAfter(0, args.sender as SenderHandle, {
       rowId: row._id,
@@ -221,7 +219,6 @@ export const deliver = internalMutation({
       kind: row.kind,
       content: row.content,
       targetMessageId: row.targetMessageId,
-      targetContent: target?.content,
       reaction: row.reaction,
     });
     return null;

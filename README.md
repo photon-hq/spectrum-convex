@@ -117,9 +117,13 @@ follow-up usually arrives while the previous reply is still in flight.
 - **At-least-once deliveries are deduped** on the provider message id.
 - **Read receipts and typing indicators never start a turn.** Otherwise a bot
   replies to the read receipt for its own last message and echoes forever.
-- **Sends are idempotent.** Each carries a `clientGuid` derived from
-  `(chainId, seq)`, re-used verbatim on retry, so a send that landed before a
-  lost acknowledgement can't post twice.
+- **Sends are deduped at the outbox.** Each row carries a `clientGuid` derived
+  from `(chainId, seq)`, so the same logical send is never queued twice.
+  <br>**Caveat:** the guid is *not* forwarded to the provider. Spectrum's send
+  path does not accept a caller-supplied `clientMessageId`, and the SDK's
+  `autoIdempotency` mints a fresh key per call — so a retry after a lost
+  acknowledgement can still post twice. Closing that needs an SDK change to
+  thread the key through.
 - **Messages are never dropped.** One rule governs the pipeline: *a message is
   spent only when a reply actually reaches the user* — not when it is drained,
   and not when the handler returns. A handler that has finished has only
@@ -180,8 +184,30 @@ nothing in the bundle references them and they are silently never installed.
 "use node";
 import { createCloudSender } from "@spectrum-ts/convex/sender";
 
-const sender = createCloudSender(); // built once per container, not per send
+const sender = createCloudSender(); // one Spectrum() instance per container
 ```
+
+The sender drives the ordinary `Spectrum()` runtime. It is built to be
+long-lived, which looks wrong for request-scoped execution, but measured it
+costs ~35ms more to construct than the low-level alternative, tears down in
+~1ms, and leaves no active handles — and caching one instance per container
+removes even that on warm invocations.
+
+### Content limitation
+
+`ContentInput` is `string | ContentBuilder`: the runtime is designed for
+in-process composition, where you call `text("hi")` and hand the builder to
+`send()`. A durable outbox has to serialize content to JSON and replay it
+later, and there is **no public way to send a resolved `Content` back**.
+
+So the sender rebuilds what round-trips cleanly — **text and markdown** — and
+throws a clear error for anything else rather than silently sending the wrong
+thing. Attachments, polls and other rich arms would need either a JSON→builder
+mapper here or an SDK change accepting resolved content.
+
+`reply`, `react` and `markRead` address an existing message, which the public
+API models as a `Message` rather than an id, so each costs an extra
+`space.getMessage()` round trip (~570ms measured).
 
 <sub>Note: `node.externalPackages` is not honoured by the anonymous local backend
 (`CONVEX_AGENT_MODE=anonymous`) — the peers are never installed there regardless
@@ -202,6 +228,7 @@ HMAC-signed webhook deliveries:
 | Outbound send | Queued with deterministic `clientGuid` `<chainId>#0` |
 | gRPC transport | Reached Spectrum Cloud from a Convex Node action — server validated the chat guid and applied its target policy |
 | Send failure | Captured in `lastError`, retried with backoff |
+| Transport | The ordinary `Spectrum()` runtime, one instance cached per container |
 
 The final send returned `[spectrum-imessage] Target not allowed for this
 project` for a reserved fictional number — a server-side policy response, which
