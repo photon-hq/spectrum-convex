@@ -243,18 +243,12 @@ npm test
 npm run build
 ```
 
-> **Requires unreleased SDK changes.** This component imports
-> `@spectrum-ts/core/webhook` and `@spectrum-ts/imessage/remote`. Both subpaths
-> exist in the `spectrum-ts` repo but are **not yet published**, so a fresh
-> `npm install` resolves `@spectrum-ts/core@12.7.0` from npm without them and
-> `npm run typecheck` fails on the missing subpath. It will build once those
-> ship in a minor release.
->
-> To develop against a local SDK checkout in the meantime, point the two
-> dependencies at it (`"@spectrum-ts/core": "file:../spectrum-ts/packages/core"`)
-> and map their types to the built declarations via `paths` in `tsconfig.json` —
-> otherwise TypeScript checks the SDK's own source under this project's `lib`
-> settings and reports errors that don't apply to the published package.
+> **Local development against an SDK checkout.** `tsconfig.json` maps
+> `@spectrum-ts/*` types to a sibling `spectrum-ts` checkout's built
+> declarations, so TypeScript uses those rather than checking the SDK's source
+> under this project's `lib` settings. It is inert without that checkout —
+> TypeScript falls back to normal node resolution when a mapping doesn't
+> resolve — so a plain `npm install` works unchanged.
 
 ## License
 

@@ -15,11 +15,6 @@ jobs:
           node-version: 24
       - run: npm install
       - run: npm run check
-      # NOTE: typecheck, test and build are expected to FAIL until
-      # @spectrum-ts/core/webhook and @spectrum-ts/imessage/remote are published
-      # — a fresh install resolves core@12.7.0 without those subpaths. See the
-      # note at the bottom of README.md. Everything passes locally against a
-      # source checkout of the SDK.
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
