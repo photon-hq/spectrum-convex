@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "extends": ["ultracite/biome/core", "ultracite/biome/vitest"],
+  "linter": {
+    "rules": {
+      "suspicious": {
+        "useAwait": "off",
+        "noEmptyBlockStatements": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      // Public package entry points: re-exporting is their job.
+      "includes": ["src/client/index.ts", "src/client/sender.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noBarrelFile": "off"
+          }
+        }
+      }
+    }
+  ],
+  "files": {
+    // _generated/ is written by `convex codegen`; example/ is a sample app
+    // with its own generated tree.
+    "includes": ["!**/_generated", "!dist", "!bun.lock"]
+  }
+}

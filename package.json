@@ -1,0 +1,72 @@
+{
+  "name": "@spectrum-ts/convex",
+  "version": "0.1.0",
+  "description": "Convex component for Spectrum iMessage \u2014 durable inbound pipeline, batching, cancellation, and idempotent sends.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/photon-hq/spectrum-convex.git"
+  },
+  "homepage": "https://photon.codes/spectrum",
+  "bugs": {
+    "url": "https://github.com/photon-hq/spectrum-convex/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
+    },
+    "./sender": {
+      "types": "./dist/client/sender.d.ts",
+      "default": "./dist/client/sender.js"
+    },
+    "./convex.config": {
+      "types": "./dist/component/convex.config.d.ts",
+      "default": "./dist/component/convex.config.js"
+    },
+    "./test": {
+      "types": "./dist/shared/testing.d.ts",
+      "default": "./dist/shared/testing.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json && node scripts/copy-generated.mjs",
+    "dev": "tsc --project tsconfig.build.json --watch",
+    "codegen": "convex codegen --component-dir ./src/component",
+    "check": "biome check .",
+    "fix": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@spectrum-ts/core": "^12.7.0"
+  },
+  "peerDependencies": {
+    "@spectrum-ts/imessage": "^12.7.0",
+    "convex": ">=1.31.0 <2.0.0",
+    "typescript": "^5 || ^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@spectrum-ts/imessage": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.1",
+    "@edge-runtime/vm": "^5.0.0",
+    "@spectrum-ts/imessage": "^12.7.0",
+    "@types/node": "^26.0.1",
+    "convex": "^1.44.0",
+    "convex-test": "^0.0.56",
+    "typescript": "^5.9.0",
+    "ultracite": "7.8.4",
+    "vitest": "^4.1.9"
+  },
+  "license": "MIT"
+}

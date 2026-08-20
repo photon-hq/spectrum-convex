@@ -1,0 +1,17 @@
+{
+  "name": "spectrum-convex-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "convex dev"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.14.4",
+    "@photon-ai/advanced-imessage": "^2.0.2",
+    "@spectrum-ts/convex": "file:..",
+    "@spectrum-ts/imessage": "^12.7.0",
+    "convex": "^1.44.0",
+    "nice-grpc": "^2.1.16",
+    "nice-grpc-common": "^2.0.3"
+  }
+}
