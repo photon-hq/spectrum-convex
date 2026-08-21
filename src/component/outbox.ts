@@ -53,7 +53,6 @@ export const sendKind = v.union(
 
 const chainIsLive = async (
   ctx: MutationCtx,
-  spaceId: string,
   chainId: string | undefined
 ): Promise<boolean> => {
   if (!chainId) {
@@ -96,7 +95,7 @@ export const enqueue = mutation({
     reason: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
-    if (!(await chainIsLive(ctx, args.spaceId, args.chainId))) {
+    if (!(await chainIsLive(ctx, args.chainId))) {
       return { queued: false, reason: "chain-cancelled" };
     }
 
@@ -195,7 +194,7 @@ export const deliver = internalMutation({
     if (row?.status !== "pending") {
       return null;
     }
-    if (!(await chainIsLive(ctx, row.spaceId, row.chainId))) {
+    if (!(await chainIsLive(ctx, row.chainId))) {
       await ctx.db.patch(row._id, { status: "cancelled" as const });
       return null;
     }
@@ -209,7 +208,6 @@ export const deliver = internalMutation({
       .query("spaces")
       .withIndex("by_space", (q) => q.eq("spaceId", row.spaceId))
       .unique();
-
 
     await ctx.scheduler.runAfter(0, args.sender as SenderHandle, {
       rowId: row._id,

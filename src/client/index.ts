@@ -2,13 +2,9 @@ import {
   createFunctionHandle,
   type FunctionReference,
   type FunctionReturnType,
-  type OptionalRestArgs,
-  type GenericActionCtx,
-  type GenericDataModel,
-  type GenericMutationCtx,
-  type GenericQueryCtx,
   type HttpRouter,
   httpActionGeneric,
+  type OptionalRestArgs,
 } from "convex/server";
 import { headerRecord, parseWebhook } from "../shared/wire.js";
 import type { ComponentApi } from "./component.js";
@@ -78,20 +74,20 @@ export const pickChain = (ref: {
  * narrower shape both satisfy — in method syntax, so parameters stay bivariant
  * — accepts a ctx from a query, mutation or action alike.
  */
-type AnyCtx = {
+interface AnyCtx {
   runQuery<Query extends FunctionReference<"query", "public" | "internal">>(
     query: Query,
     ...args: OptionalRestArgs<Query>
   ): Promise<FunctionReturnType<Query>>;
-};
-type RunMutationCtx = {
+}
+interface RunMutationCtx {
   runMutation<
     Mutation extends FunctionReference<"mutation", "public" | "internal">,
   >(
     mutation: Mutation,
     ...args: OptionalRestArgs<Mutation>
   ): Promise<FunctionReturnType<Mutation>>;
-};
+}
 
 /**
  * How inbound messages become turns.
@@ -111,12 +107,6 @@ export type TurnMode = "immediate" | "collapse";
 
 export interface SpectrumOptions {
   /**
-   * How inbound messages become turns. See {@link TurnMode}.
-   *
-   * @default "immediate"
-   */
-  mode?: TurnMode;
-  /**
    * Settling window before a turn is handled. Only meaningful in `"collapse"`
    * mode, where it widens the window in which a follow-up can join the same
    * turn. It is a latency cost on every reply, so leave it at 0 unless you
@@ -126,6 +116,12 @@ export interface SpectrumOptions {
    * @default 0
    */
   debounceMs?: number;
+  /**
+   * How inbound messages become turns. See {@link TurnMode}.
+   *
+   * @default "immediate"
+   */
+  mode?: TurnMode;
   /**
    * The app function invoked once per settled burst. Usually an
    * `internalAction` so it can call an LLM.

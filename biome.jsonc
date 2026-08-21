@@ -11,8 +11,14 @@
   },
   "overrides": [
     {
-      // Public package entry points: re-exporting is their job.
-      "includes": ["src/client/index.ts", "src/client/sender.ts"],
+      // Public package entry points: re-exporting is their job. The
+      // workaround file re-exports on purpose too — that is what makes Convex
+      // install the gRPC peers into the Node action (see example/README.md).
+      "includes": [
+        "src/client/index.ts",
+        "src/client/sender.ts",
+        "example/convex/_workaround.ts"
+      ],
       "linter": {
         "rules": {
           "performance": {

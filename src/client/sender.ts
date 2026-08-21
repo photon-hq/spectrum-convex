@@ -21,30 +21,30 @@ import { imessage } from "@spectrum-ts/imessage";
 
 /** The payload the component hands to a sender. */
 export interface SendJob {
-  rowId: string;
-  spaceId: string;
-  phone?: string;
   /**
    * The outbox's idempotency key. NOT currently forwarded to the provider —
    * see the note on `deliver`.
    */
   clientGuid: string;
-  kind: string;
   content?: unknown;
-  targetMessageId?: string;
+  kind: string;
+  phone?: string;
   reaction?: string;
+  rowId: string;
+  spaceId: string;
+  targetMessageId?: string;
 }
 
 export interface SendOutcome {
+  error?: string;
   ok: boolean;
   providerMessageId?: string;
-  error?: string;
 }
 
 /** The transport contract the component depends on. */
 export interface Sender {
-  deliver(job: SendJob): Promise<SendOutcome>;
   close(): Promise<void>;
+  deliver(job: SendJob): Promise<SendOutcome>;
 }
 
 export interface CloudSenderOptions {
@@ -138,10 +138,53 @@ const resolveSpace = async (
   const app = await runtime(projectId, projectSecret);
   // No server round trip: an iMessage guid already encodes the chat type, and
   // sends route by `phone`.
-  return await imessage(app).space.get(
-    spaceId,
-    phone ? { phone } : undefined
-  );
+  return await imessage(app).space.get(spaceId, phone ? { phone } : undefined);
+};
+
+type ResolvedSpace = Awaited<ReturnType<typeof resolveSpace>>;
+
+/**
+ * Perform a verb that addresses an existing message.
+ *
+ * Replies, reactions and read receipts all identify their subject as a
+ * `Message` rather than a bare id, so each costs a `space.getMessage()` lookup
+ * before it can act.
+ */
+const deliverTargeted = async (
+  space: ResolvedSpace,
+  job: SendJob
+): Promise<SendOutcome> => {
+  if (!job.targetMessageId) {
+    return { ok: false, error: `${job.kind} ${NEEDS_TARGET}` };
+  }
+  const target = await space.getMessage(job.targetMessageId);
+  if (!target) {
+    return {
+      ok: false,
+      error: `message "${job.targetMessageId}" was not found in this chat`,
+    };
+  }
+
+  if (job.kind === "reply") {
+    const sent = await target.reply(toContentInput(job.content));
+    return {
+      ok: true,
+      ...(sent?.id === undefined ? {} : { providerMessageId: sent.id }),
+    };
+  }
+  if (job.kind === "react") {
+    if (!job.reaction) {
+      return { ok: false, error: "react requires a reaction" };
+    }
+    await target.react(job.reaction);
+    return { ok: true };
+  }
+  if (job.kind === "markRead") {
+    // iMessage marks read at chat level; the target only says which chat.
+    await target.read();
+    return { ok: true };
+  }
+  return { ok: false, error: `unsupported send kind "${job.kind}"` };
 };
 
 /**
@@ -193,44 +236,7 @@ export function createCloudSender(options: CloudSenderOptions = {}): Sender {
           await space.startTyping();
           return { ok: true };
         }
-
-        // Replies, reactions and read receipts all address an existing message,
-        // which the universal API models as a `Message` rather than a bare id.
-        if (!job.targetMessageId) {
-          return { ok: false, error: `${job.kind} ${NEEDS_TARGET}` };
-        }
-        const target = await space.getMessage(job.targetMessageId);
-        if (!target) {
-          return {
-            ok: false,
-            error: `message "${job.targetMessageId}" was not found in this chat`,
-          };
-        }
-
-        switch (job.kind) {
-          case "reply": {
-            const sent = await target.reply(toContentInput(job.content));
-            return {
-              ok: true,
-              ...(sent?.id === undefined ? {} : { providerMessageId: sent.id }),
-            };
-          }
-          case "react": {
-            if (!job.reaction) {
-              return { ok: false, error: "react requires a reaction" };
-            }
-            await target.react(job.reaction);
-            return { ok: true };
-          }
-          case "markRead": {
-            // iMessage marks read at chat level; the target only identifies
-            // which chat.
-            await target.read();
-            return { ok: true };
-          }
-          default:
-            return { ok: false, error: `unsupported send kind "${job.kind}"` };
-        }
+        return await deliverTargeted(space, job);
       } catch (error) {
         // Reported, not thrown: the outbox owns retry and backoff.
         return { ok: false, error: errorText(error) };

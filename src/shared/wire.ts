@@ -73,6 +73,17 @@ const looksLikeNativePayload = (bodyBytes: Uint8Array): boolean => {
   return false;
 };
 
+/** The `event`/`type` field, if the body carries one, for the shape summary. */
+const discriminatorOf = (record: Record<string, unknown>): string => {
+  if (typeof record.event === "string") {
+    return ` event=${record.event}`;
+  }
+  if (typeof record.type === "string") {
+    return ` type=${record.type}`;
+  }
+  return "";
+};
+
 /**
  * Describe an unparseable body by its structure alone — top-level keys, and the
  * `event`/`type` discriminator if present. Never includes values, which would
@@ -86,13 +97,7 @@ const describeShape = (bodyBytes: Uint8Array): string => {
     }
     const record = parsed as Record<string, unknown>;
     const keys = Object.keys(record).slice(0, 12).join(", ");
-    const discriminator =
-      typeof record.event === "string"
-        ? ` event=${record.event}`
-        : typeof record.type === "string"
-          ? ` type=${record.type}`
-          : "";
-    return `top-level keys: ${keys}${discriminator}`;
+    return `top-level keys: ${keys}${discriminatorOf(record)}`;
   } catch {
     return "body is not valid JSON";
   }

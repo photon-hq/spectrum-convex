@@ -361,7 +361,10 @@ describe("signals do not drive turns", () => {
       triggersTurn: false,
       content: {
         type: "read",
-        target: { id: "outbound-1", content: { type: "text", text: "echo: 1" } },
+        target: {
+          id: "outbound-1",
+          content: { type: "text", text: "echo: 1" },
+        },
       },
     });
 
@@ -691,7 +694,10 @@ describe("immediate mode (the default): one message, one turn", () => {
   it("still dedupes redeliveries", async () => {
     const t = setup();
     await t.mutation(api.inbound.enqueue, plain({ messageId: "m1" }));
-    const again = await t.mutation(api.inbound.enqueue, plain({ messageId: "m1" }));
+    const again = await t.mutation(
+      api.inbound.enqueue,
+      plain({ messageId: "m1" })
+    );
     expect(again.deduped).toBe(true);
   });
 });
