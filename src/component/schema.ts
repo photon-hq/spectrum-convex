@@ -131,8 +131,9 @@ export default defineSchema({
 
   /**
    * Outbound sends. `clientGuid` is derived deterministically from
-   * `(chainId, seq)` and travels to the provider as its idempotency key, so a
-   * retried send re-uses the same guid and cannot double-post.
+   * `(chainId, seq)`, so a re-queued send lands on the row that already exists
+   * rather than a second one. It dedupes rows here only — it is not forwarded
+   * to the provider (see the note in `outbox.ts`).
    */
   outbox: defineTable({
     spaceId: v.string(),

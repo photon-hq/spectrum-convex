@@ -10,13 +10,19 @@ import {
 } from "./_generated/server.js";
 
 /**
- * The outbound half: a durable outbox with deterministic idempotency keys.
+ * The outbound half: a durable outbox keyed by deterministic client guids.
  *
- * Every row carries a `clientGuid` derived from `(chainId, seq)`. It travels to
- * the provider as the send's idempotency key, so a retry — whether ours or the
- * scheduler's — re-uses the same guid and cannot post the message twice. That
- * matters most on the failure mode that actually bites in production: the send
- * succeeded but the acknowledgement was lost.
+ * Every row carries a `clientGuid` derived from `(chainId, seq)`, so re-queuing
+ * the same logical send — whether ours or the scheduler's — collapses onto the
+ * existing row instead of creating a second one.
+ *
+ * That dedupe stops at the component boundary. The guid is NOT forwarded to the
+ * provider: Spectrum's send path accepts no caller-supplied `clientMessageId`,
+ * and the SDK's `autoIdempotency` mints a fresh key per call. So the failure
+ * mode that actually bites in production — the send succeeded but the
+ * acknowledgement was lost — can still post twice. Closing that needs an SDK
+ * change to thread the key through; until then the guid is an internal dedupe
+ * key, not an end-to-end idempotency key.
  */
 
 /**

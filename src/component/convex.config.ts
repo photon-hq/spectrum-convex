@@ -4,8 +4,8 @@ import { defineComponent } from "convex/server";
  * The Spectrum component.
  *
  * Owns the durable inbound pipeline (dedupe → batch queue → debounced flush →
- * cancellation/carry-forward) and the outbox that drives idempotent, paced
- * sends. Install it from the app's `convex/convex.config.ts`:
+ * cancellation/carry-forward) and the outbox that drives deduped, paced sends.
+ * Install it from the app's `convex/convex.config.ts`:
  *
  * ```ts
  * import { defineApp } from "convex/server";

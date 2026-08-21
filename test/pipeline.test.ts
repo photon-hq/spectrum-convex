@@ -270,7 +270,7 @@ describe("cancellation and carry-forward", () => {
 });
 
 describe("outbox", () => {
-  it("assigns deterministic per-chain idempotency keys", async () => {
+  it("numbers each send in a chain deterministically", async () => {
     const t = setup();
     await t.mutation(api.inbound.enqueue, message());
     await settle(t);

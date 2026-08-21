@@ -6,7 +6,7 @@ Convex can't run Spectrum's `for await (… of app.messages)` loop — that need
 
 This component inverts that. A delivery is verified and written to a table **before** the 200 goes back, so an acknowledged message is already durable. Everything after that runs on Convex's scheduler.
 
-It also ships the production pipeline from Photon's [architecture guide](https://photon.codes/docs/best-practices/architecture) — burst debouncing, in-flight cancellation, carry-forward, and idempotent paced sends — rather than leaving you to rebuild it.
+It also ships the production pipeline from Photon's [architecture guide](https://photon.codes/docs/best-practices/architecture) — burst debouncing, in-flight cancellation, carry-forward, and paced sends — rather than leaving you to rebuild it.
 
 ## Install
 

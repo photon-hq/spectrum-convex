@@ -21,7 +21,11 @@ export const senderArgs = {
   rowId: v.string(),
   spaceId: v.string(),
   phone: v.optional(v.string()),
-  /** Idempotency key — pass through to the provider verbatim. */
+  /**
+   * The outbox's dedupe key for this row. Forward it to the provider as an
+   * idempotency key *if* your transport accepts one — the Spectrum Cloud sender
+   * cannot, which is why a lost acknowledgement can still double-post there.
+   */
   clientGuid: v.string(),
   kind: v.string(),
   content: v.optional(v.any()),
