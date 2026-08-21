@@ -1,78 +1,83 @@
 # Publishing
 
-`@spectrum-ts/convex` is published to npm. You need an npmjs account with
-permission to publish under the `@spectrum-ts` scope.
+Releases are driven by [Changesets](https://github.com/changesets/changesets)
+and run in CI. The normal path involves no local publishing.
 
-## First publish
+## Day to day
 
-1. `npm login`
-2. `npm run build:clean` — wipes `dist/`, regenerates the component's
-   `_generated/` tree, and rebuilds.
-3. `npm ci` — install exactly what `package-lock.json` pins.
-4. `npm test && npm run check && npm run typecheck`
-5. `npm pack` — produces a `.tgz`. Install it into a scratch Convex app
-   (`npm install ./spectrum-ts-convex-0.1.0.tgz`) and confirm the four entry
-   points resolve:
-   - `@spectrum-ts/convex` (the `Spectrum` client)
-   - `@spectrum-ts/convex/convex.config` (`app.use(spectrum)`)
-   - `@spectrum-ts/convex/sender` (the Node transport)
-   - `@spectrum-ts/convex/test` (`register()` for `convex-test`)
-
-   Delete the `.tgz` afterwards.
-6. `npm publish --access public`
-7. `git tag v0.1.0 && git push --follow-tags`
-
-After the first publish, use the release scripts below — they cover steps 2–7.
-
-## Release scripts
-
-- `preversion` runs `npm ci`, a clean build, the tests, biome, and typecheck
-  before a version is cut. A failure here aborts the release.
-- `prepare` rebuilds on install and before publish.
-
-### Alpha
+Add a changeset alongside any change a consumer can observe:
 
 ```sh
-npm run alpha
+npm run changeset
 ```
 
-Cuts a prerelease (`0.1.1-alpha.0`), publishes under the `alpha` dist-tag, and
-pushes the commit and tag. Consumers install it with
-`npm install @spectrum-ts/convex@alpha`.
+Pick the bump level and write the line you want in the changelog. Commit the
+generated file in `.changeset/` with your PR.
 
-### Patch
+Skip it for things a consumer can't see — CI config, tests, internal refactors.
+
+## How a release happens
+
+1. A PR with a changeset merges to `main`.
+2. `.github/workflows/release.yml` runs the full gate (build, biome, typecheck,
+   tests), then opens or updates a **"Version Packages"** PR. That PR applies
+   every pending changeset: bumps `package.json`, folds the entries into
+   `CHANGELOG.md`, and deletes the consumed changeset files.
+3. Merging the Version Packages PR re-runs the workflow, which sees no pending
+   changesets and instead runs `npm run release` — a fresh build followed by
+   `changeset publish`.
+4. `changeset publish` publishes any version not already on the registry and
+   pushes the git tag.
+
+## One-time setup
+
+The workflow needs an **`NPM_TOKEN`** repository secret.
+
+The account has `auth-and-writes` two-factor enabled, so an ordinary token will
+be rejected on publish. Create a **Granular Access Token** (or classic
+*Automation* token) at npmjs.com — those are exempt from the OTP prompt — scoped
+to write on `@spectrum-ts/*`, and add it under
+*Settings → Secrets and variables → Actions*.
+
+Also enable *Settings → Actions → General → Allow GitHub Actions to create and
+approve pull requests*, or the Version Packages PR can't be opened.
+
+## Publishing by hand
+
+Only needed for the first publish, or if CI is unavailable:
 
 ```sh
-npm run release
+npm run build:clean   # regenerates _generated, then rebuilds
+npm test && npm run check && npm run typecheck
+npm publish --access public
 ```
 
-Cuts a patch version, publishes as `latest`, and pushes the commit and tag.
+With `auth-and-writes` 2FA this prompts for a one-time password — npm prints a
+URL to approve in a browser, or pass `--otp=<code>` from an authenticator app.
 
-### Minor or major
+Sanity-check the tarball first if you like:
 
 ```sh
-npm version minor   # or major
-npm publish
-git push --follow-tags
+npm pack
 ```
+
+Install the resulting `.tgz` into a scratch Convex app and confirm all four
+entry points resolve — `@spectrum-ts/convex`, `/convex.config`, `/sender`, and
+`/test` — then delete it.
 
 ## What ships
 
-`files` is `["dist", "src"]`. Both are required — `src` is not just for source
+`files` is `["dist", "src"]`. Both are required; `src` is not just for source
 maps:
 
-- `./test` resolves to `src/test.ts` because its `import.meta.glob` has to be
+- `./test` resolves to `src/test.ts`, because its `import.meta.glob` has to be
   transformed by the consumer's bundler.
-- The `@convex-dev/component-source` export condition points at `src/**` so that
+- The `@convex-dev/component-source` condition points at `src/**` so
   `convex dev --live-component-sources` can build the component from source when
   it is linked into a local checkout.
 
-Regenerate `src/component/_generated/` (`npm run build:codegen`) and commit it
-before releasing. `component.ts` in that directory is the `ComponentApi` type
-the client re-exports, so a stale copy ships a type that no longer matches the
-component's validators.
-
-## Changelog
-
-Add a section to `CHANGELOG.md` under the new version number before running a
-release script.
+`src/component/_generated/` is committed and ships as-is. `component.ts` in that
+directory is the `ComponentApi` type the client re-exports, so a stale copy
+ships a type that no longer matches the component's validators. Regenerate with
+`npm run build:codegen` (needs a Convex deployment) and commit it whenever a
+component validator changes. CI deliberately does not regenerate it.

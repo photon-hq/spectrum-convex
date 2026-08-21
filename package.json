@@ -67,9 +67,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc -p example/convex",
     "prepare": "npm run build",
-    "preversion": "npm ci && npm run build:clean && npm test && npm run check && npm run typecheck",
-    "alpha": "npm version prerelease --preid alpha && npm publish --tag alpha && git push --follow-tags",
-    "release": "npm version patch && npm publish && git push --follow-tags"
+    "changeset": "changeset",
+    "version": "changeset version && npm install --package-lock-only",
+    "release": "npm run build && changeset publish"
   },
   "dependencies": {
     "@spectrum-ts/core": "^12.8.0"
@@ -85,6 +85,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
+    "@changesets/changelog-github": "^1.0.0",
+    "@changesets/cli": "^3.0.1",
     "@edge-runtime/vm": "^5.0.0",
     "@grpc/grpc-js": "^1.14.4",
     "@photon-ai/advanced-imessage": "^2.0.2",

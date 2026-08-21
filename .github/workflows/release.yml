@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Changesets needs history to work out what has changed since the
+          # last release.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          # Writes an .npmrc that reads NODE_AUTH_TOKEN, which is how the
+          # publish step authenticates.
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      # The same gate CI runs. `convex codegen` is deliberately not run here:
+      # it needs a live deployment, and `src/component/_generated` is committed.
+      - run: npm run build
+      - run: npm run check
+      - run: npm run typecheck
+      - run: npm test
+
+      - uses: changesets/action@v1
+        with:
+          # Opens/updates the "Version Packages" PR when changesets are
+          # pending; publishes when that PR has been merged.
+          version: npm run version
+          publish: npm run release
+          commit: "chore: version packages"
+          title: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
