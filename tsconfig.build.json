@@ -9,5 +9,15 @@
     "rootDir": "./src"
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "example", "test", "src/**/*.test.ts"]
+  // `src/test.ts` is published as source (the `./test` entry point) because its
+  // `import.meta.glob` has to be transformed by the consumer's bundler — a
+  // compiled copy would resolve the glob to an empty object.
+  "exclude": [
+    "node_modules",
+    "dist",
+    "example",
+    "test",
+    "src/**/*.test.ts",
+    "src/test.ts"
+  ]
 }

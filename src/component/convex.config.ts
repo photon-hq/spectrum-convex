@@ -16,10 +16,19 @@ import { defineComponent } from "convex/server";
  * export default app;
  * ```
  *
- * Spectrum Cloud credentials are read from the component's own environment
- * (`SPECTRUM_PROJECT_ID` / `SPECTRUM_PROJECT_SECRET`) rather than passed as
- * function arguments, so a secret never lands in a scheduled-function payload
- * or a log line.
+ * The component itself declares no environment variables. Every secret is read
+ * by app-owned code, from the *app's* deployment environment — set these in the
+ * app's Convex dashboard, not the component's:
+ *
+ * - `SPECTRUM_WEBHOOK_SECRET` — verified in the webhook handler that
+ *   `Spectrum.registerRoutes` mounts on the app's `httpRouter`. A component's
+ *   HTTP actions cannot read app env vars, which is why the route lives there.
+ * - `SPECTRUM_PROJECT_ID` / `SPECTRUM_PROJECT_SECRET` — read by
+ *   `createCloudSender` (`@spectrum-ts/convex/sender`) inside the app's Node
+ *   action, since only the Node runtime can speak gRPC.
+ *
+ * Reading them from the environment rather than accepting them as function
+ * arguments keeps a secret out of scheduled-function payloads and log lines.
  */
 const component = defineComponent("spectrum");
 

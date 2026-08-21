@@ -242,14 +242,56 @@ directory is rendered from `main`, so putting it there publishes it. It ships
 once this package is on npm and this repo is public; the file header has the
 steps.
 
+## Testing against the component
+
+Apps that install the component register it with `convex-test` explicitly —
+its schema and function modules are not part of the app's own glob:
+
+```ts
+// convex/setup.test.ts
+import { convexTest } from "convex-test";
+import spectrum from "@spectrum-ts/convex/test";
+import schema from "./schema";
+
+const modules = import.meta.glob("./**/*.ts");
+
+export function initConvexTest() {
+  const t = convexTest(schema, modules);
+  spectrum.register(t);
+  return t;
+}
+```
+
+`register(t, name?)` defaults to `"spectrum"` — pass the name you installed
+under if you changed it in `convex.config.ts`.
+
 ## Development
+
+This is a single npm package: the root `package.json` owns both the component
+and the example app in `example/`, and root `convex.json` points `functions` at
+`example/convex`. There is no separate install inside `example/`.
 
 ```sh
 npm install
-npm run codegen   # regenerate src/component/_generated
-npm test
-npm run build
+npm run dev       # codegen + build in watch, alongside `convex dev`
 ```
+
+`npm run dev` runs three things the component needs in order — component
+codegen, the package build, then `convex dev --typecheck-components` against the
+example app. To do a one-off instead:
+
+```sh
+npm run build:codegen   # convex codegen + tsc
+npm test
+npm run typecheck       # package and example/convex
+npm run check           # biome
+```
+
+`src/component/_generated/` is committed. It holds `component.ts`, the
+`ComponentApi` type the client re-exports, so regenerate and commit it whenever
+a component validator changes — `npm run build:codegen` does both.
+
+Publishing is documented in [PUBLISHING.md](./PUBLISHING.md).
 
 > **Local development against an SDK checkout.** `tsconfig.json` maps
 > `@spectrum-ts/*` types to a sibling `spectrum-ts` checkout's built

@@ -4,3 +4,6 @@ dist/
 *.tsbuildinfo
 .env
 .env.local
+
+# npm pack output
+*.tgz

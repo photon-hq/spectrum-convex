@@ -5,15 +5,19 @@ handler, Node sender, and attachment storage.
 
 ## Run it
 
+This app has no `package.json` of its own — it is served by the repo root,
+whose `convex.json` sets `"functions": "example/convex"`. Run everything from
+the root:
+
 ```sh
 npm install
-npx convex dev
+npm run dev
 ```
 
-The first `convex dev` run creates a deployment and generates `convex/_generated/`
-for both the app and the component. **Until it has run once, these files
-reference modules that don't exist yet**, so the example won't typecheck on a
-fresh clone — that's expected, not a broken checkout. It's also why the root
+The first run creates a deployment and generates `convex/_generated/` for both
+the app and the component. **Until it has run once, these files reference
+modules that don't exist yet**, so the example won't typecheck on a fresh
+clone — that's expected, not a broken checkout. It's also why the root
 `tsconfig.json` excludes this directory.
 
 Then set the environment variables in the Convex dashboard:
@@ -40,7 +44,7 @@ https://<deployment>.convex.site/spectrum/webhook
 | `agent.ts` | Batch handler — one invocation per conversational turn |
 | `sender.ts` | `"use node"` gRPC transport + attachment storage |
 | `_workaround.ts` | Forces Convex to install the gRPC peers (see below) |
-| `convex.json` | Marks the gRPC chain as `node.externalPackages` |
+| `../../convex.json` | Root config: points `functions` here, marks the gRPC chain as `node.externalPackages` |
 
 ## Why `_workaround.ts` exists
 

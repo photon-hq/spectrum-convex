@@ -6,8 +6,8 @@ import {
   httpActionGeneric,
   type OptionalRestArgs,
 } from "convex/server";
+import type { ComponentApi } from "../component/_generated/component.js";
 import { headerRecord, parseWebhook } from "../shared/wire.js";
-import type { ComponentApi } from "./component.js";
 
 /**
  * App-facing client for the Spectrum component.
@@ -410,5 +410,5 @@ export class Spectrum {
   }
 }
 
+export type { ComponentApi } from "../component/_generated/component.js";
 export { headerRecord, parseWebhook } from "../shared/wire.js";
-export type { ComponentApi } from "./component.js";

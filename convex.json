@@ -1,4 +1,5 @@
 {
+  "functions": "example/convex",
   "node": {
     "externalPackages": [
       "@photon-ai/advanced-imessage",

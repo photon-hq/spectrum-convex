@@ -14,7 +14,10 @@ jobs:
         with:
           node-version: 24
       - run: npm install
+      # Build first: `typecheck` covers example/convex, which imports
+      # `@spectrum-ts/convex` by package self-reference and so resolves through
+      # `exports` into dist/.
+      - run: npm run build
       - run: npm run check
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
