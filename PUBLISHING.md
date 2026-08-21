@@ -29,18 +29,29 @@ Skip it for things a consumer can't see — CI config, tests, internal refactors
 4. `changeset publish` publishes any version not already on the registry and
    pushes the git tag.
 
-## One-time setup
+## Authentication
 
-The workflow needs an **`NPM_TOKEN`** repository secret.
+There is **no npm token**, and nothing to rotate. The package uses npm
+[trusted publishing](https://docs.npmjs.com/trusted-publishers) over OIDC:
+npmjs.com is configured to trust `photon-hq/spectrum-convex` running
+`release.yml`, and the workflow's `id-token: write` permission lets the runner
+mint a short-lived credential to exchange at publish time. npm attaches build
+provenance automatically as a side effect.
 
-The account has `auth-and-writes` two-factor enabled, so an ordinary token will
-be rejected on publish. Create a **Granular Access Token** (or classic
-*Automation* token) at npmjs.com — those are exempt from the OTP prompt — scoped
-to write on `@spectrum-ts/*`, and add it under
-*Settings → Secrets and variables → Actions*.
+This is also what sidesteps the account's `auth-and-writes` two-factor setting,
+which otherwise stops every publish for a one-time password.
 
-Also enable *Settings → Actions → General → Allow GitHub Actions to create and
-approve pull requests*, or the Version Packages PR can't be opened.
+Two consequences worth knowing:
+
+- **Renaming or moving the workflow breaks publishing.** The trust is bound to
+  the filename `release.yml`. Update the Trusted Publisher entry on npmjs.com
+  in the same change.
+- **It requires npm >= 11.5.1.** Node 24 ships 11.17.0, so pinning the runner
+  to an older Node would silently fall back to needing a token.
+
+The one repository setting still required: *Settings → Actions → General →
+Allow GitHub Actions to create and approve pull requests*, or the Version
+Packages PR can't be opened.
 
 ## Publishing by hand
 

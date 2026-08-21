@@ -26,8 +26,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          # Writes an .npmrc that reads NODE_AUTH_TOKEN, which is how the
-          # publish step authenticates.
+          # Points npm at the public registry. Authentication is not a token —
+          # see the publish step.
           registry-url: https://registry.npmjs.org
 
       - run: npm ci
@@ -47,6 +47,11 @@ jobs:
           publish: npm run release
           commit: "chore: version packages"
           title: "chore: version packages"
+        # Publishing authenticates via npm trusted publishing (OIDC), not a
+        # token: npm is configured to trust this repo's `release.yml`, and the
+        # `id-token: write` permission above lets the runner mint the short-
+        # lived credential it exchanges. Nothing to rotate, and npm attaches
+        # provenance automatically. Requires npm >= 11.5.1 (Node 24 ships
+        # 11.17.0).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
