@@ -1,0 +1,216 @@
+---
+title: "Convex"
+description: "Run a Spectrum iMessage agent on Convex with a durable inbound pipeline"
+---
+
+{# ---------------------------------------------------------------------------
+  Staged here, not yet live.
+
+  This is a vellum template (`.mdx.vel`) for docs.photon.codes. That site is
+  rendered from `photon-hq/spectrum-ts/docs`, which the docs aggregator pulls
+  from `main` — so putting this there publishes it. It lives with the component
+  instead until both of these are true:
+
+    1. `@spectrum-ts/convex` is published to npm (the page says `npm i`)
+    2. `photon-hq/spectrum-convex` is public (the page links to it)
+
+  To ship: copy to `spectrum-ts/docs/integrations/convex.mdx.vel` and add
+  `"integrations/convex"` to the Integrations group in `docs/nav.json`.
+
+  The `{% set %}` tags and `symbol("ts:…")` lookups are vellum syntax, resolved
+  at render time against the installed package — they will not render here.
+---------------------------------------------------------------------------- #}
+
+{% set webhookRoute = "/spectrum/webhook" %}
+{% set spectrumInstance = symbol("ts:spectrum-ts#SpectrumInstance") %}
+
+[Convex](https://convex.dev) is a reactive backend whose functions are
+request-scoped, so it cannot host the long-lived `for await (… of app.messages)`
+loop that a {{ spectrumInstance | typeRef }} normally runs.
+
+Webhooks are the usual answer for that — but `app.webhook()` dispatches its
+handler **after** the HTTP response, and on Convex the isolate is frozen the
+moment that response is returned. The handler would never finish.
+
+The [`@spectrum-ts/convex`](https://github.com/photon-hq/spectrum-convex)
+component inverts the order: a delivery is verified and written to a table
+*before* the `200` is sent, so an acknowledged message is already durable.
+Everything after that runs on Convex's scheduler.
+
+It also ships the pipeline from [Architecture](/best-practices/architecture) and
+[Inbound pipeline](/best-practices/inbound-pipeline) — debouncing, cancellation,
+carry-forward, paced sends — as component tables and scheduled functions, so
+you don't rebuild it per project. None of it is imposed: by default every
+message is simply handled on its own.
+
+## Install
+
+```bash
+npm i @spectrum-ts/convex
+```
+
+```typescript
+// convex/convex.config.ts
+import { defineApp } from "convex/server";
+import spectrum from "@spectrum-ts/convex/convex.config";
+
+const app = defineApp();
+app.use(spectrum);
+export default app;
+```
+
+Set three environment variables in the Convex dashboard:
+
+| Variable | Purpose |
+|---|---|
+| `SPECTRUM_WEBHOOK_SECRET` | Verifies each delivery's HMAC |
+| `SPECTRUM_PROJECT_ID` | Spectrum Cloud project |
+| `SPECTRUM_PROJECT_SECRET` | Spectrum Cloud secret |
+
+## Wire it up
+
+```typescript
+// convex/spectrum.ts
+import { Spectrum } from "@spectrum-ts/convex";
+import { components, internal } from "./_generated/api";
+
+export const spectrum = new Spectrum(components.spectrum, {
+  onBatch: internal.agent.respond,
+  sender: internal.sender.deliver,
+  pacingMs: 600,
+});
+```
+
+```typescript
+// convex/http.ts
+import { httpRouter } from "convex/server";
+import { spectrum } from "./spectrum";
+
+const http = httpRouter();
+spectrum.registerRoutes(http);
+export default http;
+```
+
+Point your Spectrum Cloud webhook at
+`https://<deployment>.convex.site{{ webhookRoute }}`.
+
+## Handle a turn
+
+`onBatch` is invoked once per settled burst, not once per message.
+
+```typescript
+// convex/agent.ts
+export const respond = internalAction({
+  args: {
+    spaceId: v.string(),
+    chainId: v.string(),
+    messages: v.array(v.any()),
+    carried: v.array(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const reply = await generate(args.messages, args.carried);
+
+    // `ctx.scheduler.cancel` cannot stop an action that is already running, so
+    // re-check after anything slow and bail out if a newer message arrived.
+    if (await spectrum.isCancelled(ctx, args)) {
+      return null;
+    }
+
+    await spectrum.send(ctx, {
+      spaceId: args.spaceId,
+      chainId: args.chainId,
+      content: { type: "text", text: reply },
+    });
+    await spectrum.completeChain(ctx, args);
+    return null;
+  },
+});
+```
+
+`carried` holds messages an earlier, cancelled turn had already drained. They
+are older than `messages`, so present them as prior context (`[Earlier message]
+…`) rather than as part of the current question.
+
+<Note>
+Native webhook deliveries are at-least-once. The component dedupes on the
+provider message id before anything else runs, so a redelivery neither stores a
+second row nor restarts the debounce window.
+</Note>
+
+## Sending
+
+Sends go through a durable outbox. Each row carries a `clientGuid` derived from
+`(chainId, seq)`, so the same logical send is never queued twice.
+
+<Warning>
+The guid is **not** forwarded to the provider. Spectrum's send path does not
+accept a caller-supplied `clientMessageId`, and the SDK mints a fresh
+idempotency key per call, so a retry after a lost acknowledgement can still
+post the message twice.
+</Warning>
+
+The transport itself lives in an action **your app** owns:
+
+```typescript
+// convex/sender.ts
+"use node";
+
+import { createCloudSender } from "@spectrum-ts/convex/sender";
+
+const sender = createCloudSender();
+```
+
+<Warning>
+Outbound sends need two pieces of setup, and fail without them.
+
+Install the provider and the gRPC peers — `@spectrum-ts/imessage` is an
+*optional* peer, so it is not installed for you:
+
+```bash
+npm i @spectrum-ts/imessage @photon-ai/advanced-imessage nice-grpc nice-grpc-common @grpc/grpc-js
+```
+
+Then mark them external in `convex.json` **and** add a file that re-exports the
+three peers:
+
+```typescript
+// convex/_workaround.ts — nothing imports this; it exists so the packages ship
+"use node";
+export * as _grpcJs from "@grpc/grpc-js";
+export * as _niceGrpc from "nice-grpc";
+export * as _niceGrpcCommon from "nice-grpc-common";
+```
+
+Convex installs an `externalPackages` entry only if the bundled code imports it.
+These three are optional peers loaded dynamically from inside
+`@photon-ai/advanced-imessage`, so nothing references them and they are never
+installed — `createGrpcClient` then reports them as missing even though they are
+in your `package.json`.
+
+gRPC is the transport for both directions: the SDK's HTTP client has no
+`subscribeEvents` or `EventsResource`, so it cannot serve inbound.
+</Warning>
+
+Build the sender once per module rather than per send, so warm containers skip
+the token mint and channel handshake. Note that `node.externalPackages` is not
+honoured by the anonymous local backend, so test sends against a cloud
+deployment.
+
+Inbound attachments work the same way: the webhook delivers metadata only, and
+`fetchAttachment()` pulls the bytes over gRPC from a Node action. Store them
+with `ctx.storage.store()` — Convex documents cap at 1 MiB, so bytes belong in
+file storage.
+
+## What you get
+
+- **You choose how messages become turns.** `mode: "immediate"` (the default)
+  handles every message on its own — N messages, N replies. `mode: "collapse"`
+  makes a burst one turn: a follow-up supersedes the in-flight turn and cancels
+  any reply that has not gone out, so four messages in eight seconds produce a
+  single answer. `debounceMs` adds a settling window on top of collapse mode,
+  at the cost of latency on every reply.
+- **Nothing is dropped on cancellation.** Messages stay queued until a flush
+  drains them; anything drained but unanswered is carried into the next batch.
+- **A superseded turn cannot talk over its replacement.** Liveness is decided by
+  chain identity rather than by comparing timestamps, so it stays correct even
+  when two pipeline events land in the same millisecond.

@@ -234,6 +234,14 @@ The final send returned `[spectrum-imessage] Target not allowed for this
 project` for a reserved fictional number — a server-side policy response, which
 means the whole chain (token mint, TLS, gRPC, auth, request validation) worked.
 
+## Docs
+
+[`docs/integration.mdx.vel`](./docs/integration.mdx.vel) is the docs.photon.codes
+page for this component, staged here rather than in `spectrum-ts/docs` — that
+directory is rendered from `main`, so putting it there publishes it. It ships
+once this package is on npm and this repo is public; the file header has the
+steps.
+
 ## Development
 
 ```sh
