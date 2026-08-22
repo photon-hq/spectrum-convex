@@ -1,8 +1,8 @@
 # @spectrum-ts/convex
 
-A [Convex](https://convex.dev) component for [Spectrum](https://photon.codes/spectrum) iMessage.
+A [Convex](https://convex.dev) component for [Photon](https://photon.codes/spectrum) iMessage.
 
-Convex can't run Spectrum's `for await (… of app.messages)` loop — that needs a long-lived process. And the usual webhook escape hatch doesn't fit either: `app.webhook()` dispatches its handler *after* the HTTP response, but a Convex isolate is frozen the moment the response is returned.
+Convex can't run Photon's `for await (… of app.messages)` loop — that needs a long-lived process. And the usual webhook escape hatch doesn't fit either: `app.webhook()` dispatches its handler *after* the HTTP response, but a Convex isolate is frozen the moment the response is returned.
 
 This component inverts that. A delivery is verified and written to a table **before** the 200 goes back, so an acknowledged message is already durable. Everything after that runs on Convex's scheduler.
 
@@ -119,7 +119,7 @@ follow-up usually arrives while the previous reply is still in flight.
   replies to the read receipt for its own last message and echoes forever.
 - **Sends are deduped at the outbox.** Each row carries a `clientGuid` derived
   from `(chainId, seq)`, so the same logical send is never queued twice.
-  <br>**Caveat:** the guid is *not* forwarded to the provider. Spectrum's send
+  <br>**Caveat:** the guid is *not* forwarded to the provider. Photon's send
   path does not accept a caller-supplied `clientMessageId`, and the SDK's
   `autoIdempotency` mints a fresh key per call — so a retry after a lost
   acknowledgement can still post twice. Closing that needs an SDK change to

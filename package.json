@@ -1,7 +1,7 @@
 {
   "name": "@spectrum-ts/convex",
   "version": "0.1.0",
-  "description": "Convex component for Spectrum iMessage — durable inbound pipeline, batching, cancellation, and a deduped, paced outbox.",
+  "description": "Convex component for Photon iMessage — durable inbound pipeline, batching, cancellation, and a deduped, paced outbox.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/photon-hq/spectrum-convex.git"
