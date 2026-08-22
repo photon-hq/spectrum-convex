@@ -1,5 +1,14 @@
 # @spectrum-ts/convex
 
+## 0.1.1
+
+### Patch Changes
+
+- [`2940310`](https://github.com/photon-hq/spectrum-convex/commit/29403108cfefcc4f126be93450521a101a99e40b) Thanks [@qwerzl](https://github.com/qwerzl)! - Front Photon rather than Spectrum in the package description and README prose.
+  Photon is the company; Spectrum is the framework it builds. Product names
+  (`Spectrum Cloud`), the `SPECTRUM_*` environment variables, and every API
+  identifier are unchanged.
+
 ## 0.1.0
 
 Initial release.
