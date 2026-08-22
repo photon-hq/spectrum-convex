@@ -1,6 +1,6 @@
 {
   "name": "@spectrum-ts/convex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Convex component for Photon iMessage — durable inbound pipeline, batching, cancellation, and a deduped, paced outbox.",
   "repository": {
     "type": "git",
