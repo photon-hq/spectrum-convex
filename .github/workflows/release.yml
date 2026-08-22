@@ -39,19 +39,25 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
-      - uses: changesets/action@v1
+      # v2 is required, not just newer. v1 detected what had been published by
+      # regex-scraping the publish script's stdout for "New tag: pkg@version";
+      # @changesets/cli v3 prints "Successfully published:" instead, so v1 saw
+      # zero published packages and silently skipped both the tag push and the
+      # GitHub release — while npm had the version. v2 reads the release list
+      # from changesets directly. It also renamed every input.
+      - uses: changesets/action@v2
         with:
           # Opens/updates the "Version Packages" PR when changesets are
           # pending; publishes when that PR has been merged.
-          version: npm run version
-          publish: npm run release
-          commit: "chore: version packages"
-          title: "chore: version packages"
-        # Publishing authenticates via npm trusted publishing (OIDC), not a
-        # token: npm is configured to trust this repo's `release.yml`, and the
-        # `id-token: write` permission above lets the runner mint the short-
-        # lived credential it exchanges. Nothing to rotate, and npm attaches
-        # provenance automatically. Requires npm >= 11.5.1 (Node 24 ships
-        # 11.17.0).
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          version-script: npm run version
+          publish-script: npm run release
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
+          # `create-github-releases` and `push-git-tags` both default to true.
+        # No GITHUB_TOKEN env var: v2 dropped support for it and reads the
+        # `github-token` input, which defaults to ${{ github.token }}.
+        #
+        # npm auth is trusted publishing (OIDC), not a token — npm trusts this
+        # repo's `release.yml`, and `id-token: write` above lets the runner mint
+        # the short-lived credential. Nothing to rotate, and provenance is
+        # attached automatically. Needs npm >= 11.5.1 (Node 24 ships 11.17.0).

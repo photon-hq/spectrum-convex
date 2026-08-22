@@ -26,8 +26,16 @@ Skip it for things a consumer can't see — CI config, tests, internal refactors
 3. Merging the Version Packages PR re-runs the workflow, which sees no pending
    changesets and instead runs `npm run release` — a fresh build followed by
    `changeset publish`.
-4. `changeset publish` publishes any version not already on the registry and
-   pushes the git tag.
+4. `changeset publish` publishes any version not already on the registry. The
+   action then pushes a `v<version>` git tag and opens a GitHub release whose
+   body is that version's `CHANGELOG.md` section.
+
+> **Keep `changesets/action` on v2 or newer.** v1 worked out what had been
+> published by regex-scraping the publish script's stdout for
+> `New tag: pkg@version`. `@changesets/cli` v3 prints `Successfully published:`
+> instead, so v1 matched nothing, concluded nothing shipped, and skipped the tag
+> and the release — while npm had the package. The job still went green. v2
+> reads the release list from changesets directly instead of parsing output.
 
 ## Authentication
 
