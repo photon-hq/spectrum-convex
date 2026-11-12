@@ -101,5 +101,5 @@
     "ultracite": "7.8.4",
     "vitest": "^4.1.9"
   },
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

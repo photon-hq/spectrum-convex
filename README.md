@@ -302,4 +302,4 @@ Publishing is documented in [PUBLISHING.md](./PUBLISHING.md).
 
 ## License
 
-MIT © [Photon](https://photon.codes)
+Apache-2.0 © [Photon](https://photon.codes)
